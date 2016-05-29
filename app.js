@@ -1,10 +1,6 @@
 
-var uuid = require('node-uuid');
-var merge = require('merge');
-var async = require('async');
 var colors = require('colors');
 var express = require('express');
-
 var amqp = require('amqplib/callback_api');
 
 var app = express();
@@ -14,18 +10,15 @@ var app = express();
 // Middleware
 ///////////////////////////////////////////////////////////////////////////////
 
-app.use('/api', require('body-parser').json());
+app.use('/q', require('body-parser').json());
+app.use('/c', require('body-parser').json());
 
-app.use('/api', function(req, res, next) {
-
-    req.args = merge(req.body, req.query);
-    next();
-
-});
+app.use('/q', require('./src/middleware/param'));
+app.use('/c', require('./src/middleware/param'));
 
 
 ///////////////////////////////////////////////////////////////////////////////
-// API
+// AMQP
 ///////////////////////////////////////////////////////////////////////////////
 
 amqp.connect(process.env.AMQP, function(err, mq) {
@@ -38,37 +31,39 @@ amqp.connect(process.env.AMQP, function(err, mq) {
     console.log('✓ '.bold.green + 'connected to rabbitmq');
 
 
+    ///////////////////////////////////////////////////////////////////////////////
+    // Queries
+    ///////////////////////////////////////////////////////////////////////////////
+
+    var q = require('./src/q');
+
     mq.createChannel(function(err, channel) {
 
         channel.on('return', function(msg) {
-            channel.sendToQueue(msg.properties.replyTo, new Buffer('{"code":404,"text":"Not Found"}'), { headers: { code: 404 } });
+            q.catcher(msg, channel);
         });
 
-        app.all('/api/:obj/:fun', function(req, res) {
+        app.all('/q/:q', function(req, res) {
+            q.handler(req, res, channel);
+        });
 
-            res.set('Content-Type', 'application/json');
-
-            var queue = uuid.v4();
-
-            channel.assertQueue(queue, { exclusive: true, autoDelete: true });
-
-            channel.consume(queue, function(msg) {
-
-                var code = msg.properties.headers.code;
-                var json = msg.content.toString();
-
-                channel.cancel(msg.fields.consumerTag);
-
-                res.status(code || 200).send(json);
-
-            }, { noAck : true });
+    });
 
 
-            var q = req.params.obj;
-            var d = { name: req.params.fun, user: { uuid : 'd874a1f4-b296-4068-95bc-00c0fdb650e7' }, data: req.args }
+    ///////////////////////////////////////////////////////////////////////////////
+    // Command
+    ///////////////////////////////////////////////////////////////////////////////
 
-            channel.sendToQueue(q, new Buffer(JSON.stringify(d)), { mandatory: true, replyTo: queue });
+    var c = require('./src/c');
 
+    mq.createChannel(function(err, channel) {
+
+        channel.on('return', function(msg) {
+            c.catcher(msg, channel);
+        });
+
+        app.all('/c/:c', function(req, res) {
+            c.handler(req, res, channel);
         });
 
     });
