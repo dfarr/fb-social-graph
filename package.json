@@ -1,0 +1,32 @@
+{
+  "name": "core",
+  "version": "0.0.0",
+  "description": "",
+  "main": "app.js",
+  "scripts": {
+    "test": "npm test",
+    "start": "npm install && npm install -g nodemon && nodemon app.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Bunchchat/core.git"
+  },
+  "author": "Farr, David <dfarr219@gmail.com>",
+  "bugs": {
+    "url": "https://github.com/Bunchchat/core/issues"
+  },
+  "homepage": "https://github.com/Bunchchat/core#readme",
+  "dependencies": {
+    "amqp": "^0.2.4",
+    "amqplib": "^0.4.1",
+    "async": "^2.0.0-rc.5",
+    "body-parser": "^1.15.1",
+    "colors": "^1.1.2",
+    "express": "^4.13.4",
+    "glob": "^7.0.3",
+    "merge": "^1.2.0",
+    "neo4j": "^1.1.1",
+    "node-uuid": "^1.4.7",
+    "path": "^0.12.7"
+  }
+}
