@@ -41,33 +41,33 @@ amqp.connect(process.env.AMQP, function(err, mq) {
     mq.createChannel(function(err, channel) {
 
         channel.on('return', function(msg) {
-            channel.sendToQueue(msg.properties.replyTo, new Buffer('{"text" : "Not Found"}'), { headers: { code: 404 } });
+            channel.sendToQueue(msg.properties.replyTo, new Buffer('{"code":404,"text":"Not Found"}'), { headers: { code: 404 } });
         });
 
         app.all('/api/:obj/:fun', function(req, res) {
 
-            channel.assertQueue(uuid.v4(), { exclusive: true, autoDelete: true }, function(err, queue) {
+            res.set('Content-Type', 'application/json');
 
-                res.set('Content-Type', 'application/json');
+            var queue = uuid.v4();
 
-                channel.consume(queue.queue, function(msg) {
+            channel.assertQueue(queue, { exclusive: true, autoDelete: true });
 
-                    var code = msg.properties.headers.code;
-                    var json = msg.content.toString();
+            channel.consume(queue, function(msg) {
 
-                    channel.cancel(msg.fields.consumerTag);
+                var code = msg.properties.headers.code;
+                var json = msg.content.toString();
 
-                    res.status(code || 200).send(json);
+                channel.cancel(msg.fields.consumerTag);
 
-                }, { noAck : true });
-                
+                res.status(code || 200).send(json);
 
-                var q = req.params.obj;
-                var d = { name: req.params.fun, data: req.args }
+            }, { noAck : true });
 
-                channel.sendToQueue(q, new Buffer(JSON.stringify(d)), { mandatory: true, replyTo: queue.queue });
 
-            });
+            var q = req.params.obj;
+            var d = { name: req.params.fun, user: { uuid : 'd874a1f4-b296-4068-95bc-00c0fdb650e7' }, data: req.args }
+
+            channel.sendToQueue(q, new Buffer(JSON.stringify(d)), { mandatory: true, replyTo: queue });
 
         });
 

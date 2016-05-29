@@ -9,13 +9,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Bunchchat/core.git"
+    "url": "git+https://github.com/bunchchat/core.git"
   },
   "author": "Farr, David <dfarr219@gmail.com>",
   "bugs": {
-    "url": "https://github.com/Bunchchat/core/issues"
+    "url": "https://github.com/bunchchat/core/issues"
   },
-  "homepage": "https://github.com/Bunchchat/core#readme",
+  "homepage": "https://github.com/bunchchat/core#readme",
   "dependencies": {
     "amqp": "^0.2.4",
     "amqplib": "^0.4.1",
