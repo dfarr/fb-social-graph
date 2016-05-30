@@ -31,9 +31,9 @@ module.exports = {
         var c = req.params.c;
         var d = { user: req.user, data: req.args };
 
-        channel.assertExchange('event', 'direct');
+        channel.assertExchange('event', 'topic');
 
-        channel.publish('event', c, new Buffer(JSON.stringify(d)), { mandatory: true, replyTo: queue });
+        channel.publish('event', c, new Buffer(JSON.stringify(d)), { mandatory: true, replyTo: queue, timestamp: Date.now() });
 
     }
 

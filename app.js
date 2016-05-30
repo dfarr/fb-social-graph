@@ -68,6 +68,29 @@ amqp.connect(process.env.AMQP, function(err, mq) {
 
     });
 
+
+    ///////////////////////////////////////////////////////////////////////////////
+    // Logging
+    ///////////////////////////////////////////////////////////////////////////////
+
+    mq.createChannel(function(err, channel) {
+
+        channel.assertExchange('event', 'topic');
+
+        channel.assertQueue('logger');
+
+        channel.bindQueue('logger', 'event', 'user.*');
+        // channel.bindQueue('logger', 'event', 'topic.*');
+
+        channel.consume('logger', function(msg) {
+
+            console.log(msg.properties.timestamp, msg.fields.routingKey, msg.content.toString());
+
+        }, { noAck: true });
+
+    });
+
+
 });
 
 
