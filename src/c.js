@@ -28,14 +28,12 @@ module.exports = {
         }, { noAck : true });
 
 
-        var c = 'c.' + req.params.c;
-        var d = { user: res.user, data: req.args };
+        var c = req.params.c;
+        var d = { user: req.user, data: req.args };
 
         channel.assertExchange('event', 'direct');
 
-        channel.sendToQueue(c, new Buffer(JSON.stringify(d)), { mandatory: true, replyTo: queue });
-
-        channel.publish('event', c, new Buffer(JSON.stringify(d)));
+        channel.publish('event', c, new Buffer(JSON.stringify(d)), { mandatory: true, replyTo: queue });
 
     }
 
