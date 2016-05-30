@@ -58,12 +58,14 @@ amqp.connect(process.env.AMQP, function(err, mq) {
 
     mq.createChannel(function(err, channel) {
 
-        channel.on('return', function(msg) {
-            c.catcher(msg, channel);
-        });
-
         app.all('/c/:c', function(req, res) {
+
+            res.set('Content-Type', 'application/json');
+
+            res.send('{"ok":true}');
+
             c.handler(req, res, channel);
+
         });
 
     });
@@ -79,8 +81,7 @@ amqp.connect(process.env.AMQP, function(err, mq) {
 
         channel.assertQueue('logger');
 
-        channel.bindQueue('logger', 'event', 'user.*');
-        // channel.bindQueue('logger', 'event', 'topic.*');
+        channel.bindQueue('logger', 'event', '#');
 
         channel.consume('logger', function(msg) {
 
