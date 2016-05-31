@@ -4,14 +4,16 @@ var amqp = require('amqplib/callback_api');
 
 module.exports = {
 
-    handler: function(req, res, channel) {
+    handler: function(req, res) {
 
         var c = req.params.c;
         var d = { user: req.user, data: req.args };
 
-        channel.assertExchange('event', 'topic');
+        mq.assertExchange('event', 'topic');
 
-        channel.publish('event', c, new Buffer(JSON.stringify(d)), { timestamp: Date.now() });
+        mq.publish('event', c, new Buffer(JSON.stringify(d)));
+
+        res.json({ ok: true })
 
     }
 

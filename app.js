@@ -2,6 +2,7 @@
 var glob = require('glob');
 var path = require('path');
 var async = require('async');
+var merge = require('merge');
 var colors = require('colors');
 var express = require('express');
 var passport = require('passport');
@@ -13,18 +14,18 @@ var app = express();
 
 
 ///////////////////////////////////////////////////////////////////////////////
-// Configuration
+// Configuration (REMOVE)
 ///////////////////////////////////////////////////////////////////////////////
 
-var session = require('express-session');
-var RedisStore = require('connect-redis')(session);
+// var session = require('express-session');
+// var RedisStore = require('connect-redis')(session);
 
-app.use(session({
-    secret: 'I am not as think, as you drunk, I am, ossifer.',
-    resave: false,
-    saveUninitialized: false,
-    store: new RedisStore({ host: process.env.REDIS_HOST, port: process.env.REDIS_PORT })
-}));
+// app.use(session({
+//     secret: 'I am not as think, as you drunk, I am, ossifer.',
+//     resave: false,
+//     saveUninitialized: false,
+//     store: new RedisStore({ host: process.env.REDIS_HOST, port: process.env.REDIS_PORT })
+// }));
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -33,9 +34,13 @@ app.use(session({
 
 app.use(require('body-parser').json()); 
 
+app.use('/auth', require('./src/middleware/param'));
+
 app.use('/q', require('./src/middleware/param'));
 app.use('/c', require('./src/middleware/param'));
-app.use('/auth', require('./src/middleware/param'));
+
+// app.use('/q', require('./src/middleware/authenticated'));
+// app.use('/c', require('./src/middleware/authenticated'));
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -62,7 +67,7 @@ app.use('/auth', require('./src/controllers/auth'));
 async.series([
 
     ///////////////////////////////////////////////////////////////////////////////
-    // Database
+    // Database (MOVE TO WORKER)
     ///////////////////////////////////////////////////////////////////////////////
 
     function(done) {
@@ -107,10 +112,28 @@ async.series([
                 return done(err);
             }
 
-            global.mq = mq;
+            mq.createChannel(function(err, channel) {
 
-            console.log('✓ '.bold.green + 'connected to rabbitmq');
-            done();
+                if(err) {
+                    console.log('✖ '.bold.red + 'failed to connect to rabbitmq');
+                    return done(err);
+                }
+
+                var publish = channel.publish;
+
+                channel.publish = function(ex, rk, cnt, opt) {
+
+                    opt = merge(opt || {}, { timestamp: Date.now() });
+
+                    return publish.call(this, ex, rk, cnt, opt);
+
+                };
+
+                global.mq = channel;
+
+                console.log('✓ '.bold.green + 'connected to rabbitmq');
+                done();
+            });
         });
     },
 
@@ -123,24 +146,12 @@ async.series([
 
         var q = require('./src/q');
 
-        global.mq.createChannel(function(err, channel) {
+        mq.on('return', q.catcher); // ???
 
-            if(err) {
-                console.log('✖ '.bold.red + 'failed to set up queries channel');
-                return done(err)
-            }
+        app.all('/q/:q', q.handler);
 
-            channel.on('return', function(msg) {
-                q.catcher(msg, channel);
-            });
-
-            app.all('/q/:q', function(req, res) {
-                q.handler(req, res, channel);
-            });
-
-            console.log('✓ '.bold.green + 'successfully set up queries channel');
-            done();
-        });
+        console.log('✓ '.bold.green + 'successfully set up queries');
+        done();
     },
 
 
@@ -152,26 +163,10 @@ async.series([
 
         var c = require('./src/c');
 
-        global.mq.createChannel(function(err, channel) {
+        app.all('/c/:c', c.handler);
 
-            if(err) {
-                console.log('✖ '.bold.red + 'failed to set up command channel');
-                return done(err)
-            }
-
-            app.all('/c/:c', function(req, res) {
-
-                res.set('Content-Type', 'application/json');
-
-                res.send('{"ok":true}');
-
-                c.handler(req, res, channel);
-
-            });
-
-            console.log('✓ '.bold.green + 'successfully set up command channel');
-            done();
-        });
+        console.log('✓ '.bold.green + 'successfully set up command');
+        done();
     },
 
 
@@ -181,28 +176,20 @@ async.series([
 
     function(done) {
 
-        global.mq.createChannel(function(err, channel) {
+        mq.assertExchange('event', 'topic');
 
-            if(err) {
-                console.log('✖ '.bold.red + 'failed to set up logging channel');
-                return done(err)
-            }
+        mq.assertQueue('logger');
 
-            channel.assertExchange('event', 'topic');
+        mq.bindQueue('logger', 'event', '#');
 
-            channel.assertQueue('logger');
+        mq.consume('logger', function(msg) {
 
-            channel.bindQueue('logger', 'event', '#');
+            console.log(msg.properties.timestamp, msg.fields.routingKey, msg.content.toString());
 
-            channel.consume('logger', function(msg) {
+        }, { noAck: true });
 
-                console.log(msg.properties.timestamp, msg.fields.routingKey, msg.content.toString());
-
-            }, { noAck: true });
-
-            console.log('✓ '.bold.green + 'successfully set up logging channel');
-            done();
-        });
+        console.log('✓ '.bold.green + 'successfully set up logging');
+        done();
     }
 
 ], function(err) {

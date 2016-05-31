@@ -4,24 +4,22 @@ var amqp = require('amqplib/callback_api');
 
 module.exports = {
 
-    catcher: function(msg, channel) {
-        channel.sendToQueue(msg.properties.replyTo, new Buffer('{"code":404,"text":"Not Found"}'), { headers: { code: 404 } });
+    catcher: function(msg) {
+        mq.sendToQueue(msg.properties.replyTo, new Buffer('{"code":404,"text":"Not Found"}'), { headers: { code: 404 } });
     },
 
-    handler: function(req, res, channel) {
+    handler: function(req, res) {
 
         var queue = uuid.v4();
 
-        res.set('Content-Type', 'application/json');
+        mq.assertQueue(queue, { exclusive: true, autoDelete: true });
 
-        channel.assertQueue(queue, { exclusive: true, autoDelete: true });
-
-        channel.consume(queue, function(msg) {
+        mq.consume(queue, function(msg) {
 
             var code = msg.properties.headers.code;
             var json = msg.content.toString();
 
-            channel.cancel(msg.fields.consumerTag);
+            mq.cancel(msg.fields.consumerTag);
 
             res.status(code || 200).send(json);
 
@@ -31,7 +29,7 @@ module.exports = {
         var q = 'q.' + req.params.q;
         var d = { user: req.user, data: req.args };
 
-        channel.sendToQueue(q, new Buffer(JSON.stringify(d)), { mandatory: true, replyTo: queue });
+        mq.sendToQueue(q, new Buffer(JSON.stringify(d)), { mandatory: true, replyTo: queue });
     }
 
 };

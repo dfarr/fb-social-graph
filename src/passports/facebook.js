@@ -18,7 +18,7 @@ passport.use(new Strategy({
 
 }, function(accessToken, refreshToken, profile, done) {
 
-    done(null, merge(profile._json, { token: accessToken }));
+    done(null, merge(profile._json, { access_token: accessToken }));
 
 }));
 
@@ -43,12 +43,12 @@ passport.deserializeUser(function(user, done) {
 var router = express.Router();
 
 router.get('/auth/facebook',
-    passport.authenticate('facebook'));
+    passport.authenticate('facebook', { scope: [ 'public_profile', 'user_friends' ] }));
 
 router.get('/auth/facebook/callback', 
     passport.authenticate('facebook'),
     function(req, res) {
-        res.redirect('/auth?id=' + req.user.id + '&name=' + req.user.name + '&token=' + req.user.token);
+        res.redirect('/auth?access_token=' + req.user.access_token);
     });
 
 
