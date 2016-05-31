@@ -1,96 +1,220 @@
 
+var glob = require('glob');
+var path = require('path');
+var async = require('async');
 var colors = require('colors');
 var express = require('express');
+var passport = require('passport');
+
 var amqp = require('amqplib/callback_api');
+var Sequelize = require('sequelize');
 
 var app = express();
+
+
+///////////////////////////////////////////////////////////////////////////////
+// Configuration
+///////////////////////////////////////////////////////////////////////////////
+
+var session = require('express-session');
+var RedisStore = require('connect-redis')(session);
+
+app.use(session({
+    secret: 'I am not as think, as you drunk, I am, ossifer.',
+    resave: false,
+    saveUninitialized: false,
+    store: new RedisStore({ host: process.env.REDIS_HOST, port: process.env.REDIS_PORT })
+}));
 
 
 ///////////////////////////////////////////////////////////////////////////////
 // Middleware
 ///////////////////////////////////////////////////////////////////////////////
 
-app.use('/q', require('body-parser').json());
-app.use('/c', require('body-parser').json());
+app.use(require('body-parser').json()); 
 
 app.use('/q', require('./src/middleware/param'));
 app.use('/c', require('./src/middleware/param'));
+app.use('/auth', require('./src/middleware/param'));
 
 
 ///////////////////////////////////////////////////////////////////////////////
-// AMQP
+// Passport (TESTING ONLY, WILL REMOVE)
 ///////////////////////////////////////////////////////////////////////////////
 
-amqp.connect(process.env.AMQP, function(err, mq) {
+app.use(passport.initialize());
+app.use(passport.session());
 
-    if(err) {
-        console.log('✖ '.bold.red + 'failed to connect to rabbitmq');
-        process.exit(1);
-    }
+app.use('/test', require('./src/passports/facebook'));
 
-    console.log('✓ '.bold.green + 'connected to rabbitmq');
+
+///////////////////////////////////////////////////////////////////////////////
+// Controller
+///////////////////////////////////////////////////////////////////////////////
+
+app.use('/auth', require('./src/controllers/auth'));
+
+
+///////////////////////////////////////////////////////////////////////////////
+// Bootstrap
+///////////////////////////////////////////////////////////////////////////////
+
+async.series([
+
+    ///////////////////////////////////////////////////////////////////////////////
+    // Database
+    ///////////////////////////////////////////////////////////////////////////////
+
+    function(done) {
+
+        var sequelize = new Sequelize(process.env.POSTGRES);
+
+        glob('./src/models/*.js', function(err, file) {
+
+            file = file || [];
+
+            file
+                .map(f => path.join(__dirname, f))
+                .forEach(f => sequelize.import(f));
+
+            global.db = sequelize;
+
+            sequelize.sync().then(function() {
+
+                console.log('✓ '.bold.green + 'connected to postgres');
+                done();
+
+            }).catch(function(err) {
+
+                console.log('✖ '.bold.red + 'failed to connect to postgres');
+                done(err);
+
+            });
+        });
+    },
+
+
+    ///////////////////////////////////////////////////////////////////////////////
+    // AMQP
+    ///////////////////////////////////////////////////////////////////////////////
+
+    function(done) {
+
+        amqp.connect(process.env.AMQP, function(err, mq) {
+
+            if(err) {
+                console.log('✖ '.bold.red + 'failed to connect to rabbitmq');
+                return done(err);
+            }
+
+            global.mq = mq;
+
+            console.log('✓ '.bold.green + 'connected to rabbitmq');
+            done();
+        });
+    },
 
 
     ///////////////////////////////////////////////////////////////////////////////
     // Queries
     ///////////////////////////////////////////////////////////////////////////////
 
-    var q = require('./src/q');
+    function(done) {
 
-    mq.createChannel(function(err, channel) {
+        var q = require('./src/q');
 
-        channel.on('return', function(msg) {
-            q.catcher(msg, channel);
+        global.mq.createChannel(function(err, channel) {
+
+            if(err) {
+                console.log('✖ '.bold.red + 'failed to set up queries channel');
+                return done(err)
+            }
+
+            channel.on('return', function(msg) {
+                q.catcher(msg, channel);
+            });
+
+            app.all('/q/:q', function(req, res) {
+                q.handler(req, res, channel);
+            });
+
+            console.log('✓ '.bold.green + 'successfully set up queries channel');
+            done();
         });
-
-        app.all('/q/:q', function(req, res) {
-            q.handler(req, res, channel);
-        });
-
-    });
+    },
 
 
     ///////////////////////////////////////////////////////////////////////////////
     // Command
     ///////////////////////////////////////////////////////////////////////////////
 
-    var c = require('./src/c');
+    function(done) {
 
-    mq.createChannel(function(err, channel) {
+        var c = require('./src/c');
 
-        app.all('/c/:c', function(req, res) {
+        global.mq.createChannel(function(err, channel) {
 
-            res.set('Content-Type', 'application/json');
+            if(err) {
+                console.log('✖ '.bold.red + 'failed to set up command channel');
+                return done(err)
+            }
 
-            res.send('{"ok":true}');
+            app.all('/c/:c', function(req, res) {
 
-            c.handler(req, res, channel);
+                res.set('Content-Type', 'application/json');
 
+                res.send('{"ok":true}');
+
+                c.handler(req, res, channel);
+
+            });
+
+            console.log('✓ '.bold.green + 'successfully set up command channel');
+            done();
         });
-
-    });
+    },
 
 
     ///////////////////////////////////////////////////////////////////////////////
     // Logging
     ///////////////////////////////////////////////////////////////////////////////
 
-    mq.createChannel(function(err, channel) {
+    function(done) {
 
-        channel.assertExchange('event', 'topic');
+        global.mq.createChannel(function(err, channel) {
 
-        channel.assertQueue('logger');
+            if(err) {
+                console.log('✖ '.bold.red + 'failed to set up logging channel');
+                return done(err)
+            }
 
-        channel.bindQueue('logger', 'event', '#');
+            channel.assertExchange('event', 'topic');
 
-        channel.consume('logger', function(msg) {
+            channel.assertQueue('logger');
 
-            console.log(msg.properties.timestamp, msg.fields.routingKey, msg.content.toString());
+            channel.bindQueue('logger', 'event', '#');
 
-        }, { noAck: true });
+            channel.consume('logger', function(msg) {
 
-    });
+                console.log(msg.properties.timestamp, msg.fields.routingKey, msg.content.toString());
 
+            }, { noAck: true });
+
+            console.log('✓ '.bold.green + 'successfully set up logging channel');
+            done();
+        });
+    }
+
+], function(err) {
+
+    if(err) {
+        console.log('✖ '.bold.red + 'failed to bootstrap core');
+        console.log(err);
+
+        process.exit(1);
+    }
+
+    console.log('✓ '.bold.green + 'successfully bootstraped core, listening on localhost:3000');
 
 });
 
