@@ -14,27 +14,10 @@ var app = express();
 
 
 ///////////////////////////////////////////////////////////////////////////////
-// Configuration (REMOVE)
-///////////////////////////////////////////////////////////////////////////////
-
-// var session = require('express-session');
-// var RedisStore = require('connect-redis')(session);
-
-// app.use(session({
-//     secret: 'I am not as think, as you drunk, I am, ossifer.',
-//     resave: false,
-//     saveUninitialized: false,
-//     store: new RedisStore({ host: process.env.REDIS_HOST, port: process.env.REDIS_PORT })
-// }));
-
-
-///////////////////////////////////////////////////////////////////////////////
 // Middleware
 ///////////////////////////////////////////////////////////////////////////////
 
 app.use(require('body-parser').json()); 
-
-app.use('/auth', require('./src/middleware/param'));
 
 app.use('/q', require('./src/middleware/param'));
 app.use('/c', require('./src/middleware/param'));
@@ -51,13 +34,6 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 app.use('/test', require('./src/passports/facebook'));
-
-
-///////////////////////////////////////////////////////////////////////////////
-// Controller
-///////////////////////////////////////////////////////////////////////////////
-
-app.use('/auth', require('./src/controllers/auth'));
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -112,31 +88,32 @@ async.series([
                 return done(err);
             }
 
-            mq.createChannel(function(err, channel) {
+            global.mq = mq;
 
-                if(err) {
-                    console.log('✖ '.bold.red + 'failed to connect to rabbitmq');
-                    return done(err);
-                }
-
-                var publish = channel.publish;
-
-                channel.publish = function(ex, rk, cnt, opt) {
-
-                    opt = merge(opt || {}, { timestamp: Date.now() });
-
-                    return publish.call(this, ex, rk, cnt, opt);
-
-                };
-
-                global.mq = channel;
-
-                console.log('✓ '.bold.green + 'connected to rabbitmq');
-                done();
-            });
+            console.log('✓ '.bold.green + 'connected to rabbitmq');
+            done();
         });
     },
 
+
+    ///////////////////////////////////////////////////////////////////////////////
+    // Controller
+    ///////////////////////////////////////////////////////////////////////////////
+
+    function(done) {
+
+        glob('./src/controllers/*.js', function(err, file) {
+
+            file = file || [];
+
+            file
+                .map(f => path.join(__dirname, f))
+                .forEach(f=> app.use(require(f)))
+
+            console.log('✓ '.bold.green + 'imported controllers');
+            done();
+        });
+    },
 
     ///////////////////////////////////////////////////////////////////////////////
     // Queries
@@ -144,11 +121,7 @@ async.series([
 
     function(done) {
 
-        var q = require('./src/q');
-
-        mq.on('return', q.catcher); // ???
-
-        app.all('/q/:q', q.handler);
+        app.all('/q/:q', require('./src/q'));
 
         console.log('✓ '.bold.green + 'successfully set up queries');
         done();
@@ -161,9 +134,7 @@ async.series([
 
     function(done) {
 
-        var c = require('./src/c');
-
-        app.all('/c/:c', c.handler);
+        app.all('/c/:c', require('./src/c'));
 
         console.log('✓ '.bold.green + 'successfully set up command');
         done();
@@ -176,13 +147,15 @@ async.series([
 
     function(done) {
 
-        mq.assertExchange('event', 'topic');
+        var ch = mq.createChannel();
 
-        mq.assertQueue('logger');
+        ch.assertExchange('event', 'topic');
 
-        mq.bindQueue('logger', 'event', '#');
+        ch.assertQueue('c.logger');
 
-        mq.consume('logger', function(msg) {
+        ch.bindQueue('c.logger', 'event', '#');
+
+        ch.consume('c.logger', function(msg) {
 
             console.log(msg.properties.timestamp, msg.fields.routingKey, msg.content.toString());
 

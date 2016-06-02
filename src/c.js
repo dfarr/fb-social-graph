@@ -1,20 +1,20 @@
 
-var uuid = require('node-uuid');
-var amqp = require('amqplib/callback_api');
+var ch = mq.createChannel();
 
-module.exports = {
+///////////////////////////////////////////////////////////////////////////////
+// Command
+///////////////////////////////////////////////////////////////////////////////
 
-    handler: function(req, res) {
+module.exports = function(req, res) {
+        
+    var c = req.params.c;
+    var d = { user: req.user, data: req.args };
 
-        var c = req.params.c;
-        var d = { user: req.user, data: req.args };
+    ch.assertExchange('event', 'topic');
 
-        mq.assertExchange('event', 'topic');
+    ch.publish('event', c, new Buffer(JSON.stringify(d)));
 
-        mq.publish('event', c, new Buffer(JSON.stringify(d)));
-
-        res.json({ ok: true })
-
-    }
+    res.json({ ok: true })
 
 };
+
