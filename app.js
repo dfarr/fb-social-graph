@@ -6,9 +6,7 @@ var merge = require('merge');
 var colors = require('colors');
 var express = require('express');
 var passport = require('passport');
-
 var amqp = require('amqplib/callback_api');
-var Sequelize = require('sequelize');
 
 var app = express();
 
@@ -41,38 +39,6 @@ app.use('/test', require('./src/passports/facebook'));
 ///////////////////////////////////////////////////////////////////////////////
 
 async.series([
-
-    ///////////////////////////////////////////////////////////////////////////////
-    // Database (MOVE TO WORKER)
-    ///////////////////////////////////////////////////////////////////////////////
-
-    function(done) {
-
-        var sequelize = new Sequelize(process.env.POSTGRES);
-
-        glob('./src/models/*.js', function(err, file) {
-
-            file = file || [];
-
-            file
-                .map(f => path.join(__dirname, f))
-                .forEach(f => sequelize.import(f));
-
-            global.db = sequelize;
-
-            sequelize.sync().then(function() {
-
-                console.log('✓ '.bold.green + 'connected to postgres');
-                done();
-
-            }).catch(function(err) {
-
-                console.log('✖ '.bold.red + 'failed to connect to postgres');
-                done(err);
-
-            });
-        });
-    },
 
 
     ///////////////////////////////////////////////////////////////////////////////
@@ -142,7 +108,7 @@ async.series([
 
 
     ///////////////////////////////////////////////////////////////////////////////
-    // Logging
+    // Logging (TODO: make this a microservice)
     ///////////////////////////////////////////////////////////////////////////////
 
     function(done) {

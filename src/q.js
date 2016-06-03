@@ -1,11 +1,9 @@
 
-var uuid = require('node-uuid');
-
 var ch = mq.createChannel();
 
 ch.on('return', function(msg) {
     ch.sendToQueue(msg.properties.replyTo, new Buffer('{"code":404,"text":"Not Found"}'), { headers: { code: 404 } });
-}); 
+});
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -14,23 +12,25 @@ ch.on('return', function(msg) {
 
 module.exports = function(req, res) {
 
-    ch.assertQueue('q.handler', { exclusive: true });
+    // TODO: think about queue (and message) TTL
 
-    ch.consume('q.handler', function(msg) {
+    ch.assertQueue('', { exclusive: true, autoDelete: true }, function(err, queue) {
 
-        var code = msg.properties.headers.code;
-        var json = msg.content.toString();
+        ch.consume(queue.queue, function(msg) {
 
-        // ch.cancel(msg.fields.consumerTag);
+            var code = msg.properties.headers.code;
+            var json = msg.content.toString();
 
-        res.status(code || 200).send(json);
+            res.status(code || 200).send(json);
 
-    }, { noAck : true });
+            ch.cancel(msg.fields.consumerTag);
 
+        }, { noAck: true });
 
-    var q = 'q.' + req.params.q;
-    var d = { user: req.user, data: req.args };
+        var q = 'q.' + req.params.q;
+        var d = { user: req.user, data: req.args };
 
-    ch.sendToQueue(q, new Buffer(JSON.stringify(d)), { mandatory: true, replyTo: 'q.handler' });
+        ch.sendToQueue(q, new Buffer(JSON.stringify(d)), { mandatory: true, replyTo: queue.queue });
+    });
 
 };

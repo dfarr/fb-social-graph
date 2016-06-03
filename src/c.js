@@ -14,7 +14,7 @@ module.exports = function(req, res) {
 
     ch.publish('event', c, new Buffer(JSON.stringify(d)));
 
-    res.json({ ok: true })
+    res.json({ ok: true });
 
 };
 
