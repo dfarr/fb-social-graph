@@ -38,7 +38,7 @@ router.all('/auth', function(req, res) {
             var frnd = body[1];
             var appl = body[2];
 
-            if(data.some(d => d.code !== 200)) {
+            if(fail) {
                 return res.status(403).json({ ok: false });
             }
 

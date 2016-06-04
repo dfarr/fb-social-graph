@@ -6,7 +6,6 @@ var merge = require('merge');
 var colors = require('colors');
 var express = require('express');
 var passport = require('passport');
-var amqp = require('amqplib/callback_api');
 
 var app = express();
 
@@ -20,8 +19,8 @@ app.use(require('body-parser').json());
 app.use('/q', require('./src/middleware/param'));
 app.use('/c', require('./src/middleware/param'));
 
-// app.use('/q', require('./src/middleware/authenticated'));
-// app.use('/c', require('./src/middleware/authenticated'));
+app.use('/q', require('./src/middleware/authenticated'));
+app.use('/c', require('./src/middleware/authenticated'));
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -46,6 +45,8 @@ async.series([
     ///////////////////////////////////////////////////////////////////////////////
 
     function(done) {
+
+        var amqp = require('amqplib/callback_api');
 
         amqp.connect(process.env.AMQP, function(err, mq) {
 
@@ -117,11 +118,11 @@ async.series([
 
         ch.assertExchange('event', 'topic');
 
-        ch.assertQueue('c.logger');
+        ch.assertQueue('logs');
 
-        ch.bindQueue('c.logger', 'event', '#');
+        ch.bindQueue('logs', 'event', '#');
 
-        ch.consume('c.logger', function(msg) {
+        ch.consume('logs', function(msg) {
 
             console.log(msg.properties.timestamp, msg.fields.routingKey, msg.content.toString());
 
@@ -140,9 +141,10 @@ async.series([
         process.exit(1);
     }
 
-    console.log('✓ '.bold.green + 'successfully bootstraped core, listening on localhost:3000');
+    var server = app.listen(3000, function() {
+
+        console.log('successfully bootstraped core, listening on http://%s:%s', server.address().address, server.address().port);
+
+    });
 
 });
-
-
-app.listen(3000);
