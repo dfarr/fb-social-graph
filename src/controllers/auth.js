@@ -11,9 +11,9 @@ var router = express.Router();
 // Authenticate
 ///////////////////////////////////////////////////////////////////////////////
 
-router.use('/auth', require('../middleware/param'));
+router.use('/', require('../middleware/param'));
 
-router.all('/auth', function(req, res) {
+router.all('/', function(req, res) {
 
     var urls = [
         '/me',
@@ -46,14 +46,13 @@ router.all('/auth', function(req, res) {
                 return res.status(403).json({ ok: false });
             }
 
-            frnd.data
-                .map(data => new Buffer(JSON.stringify({ user: user, data: data })))
-                .forEach(buffer => ch.publish('event', 'user.friend', buffer));
-
+            // create token
             var token = jwt.sign(user, 'SECRET', { expiresIn: '7d' });
 
-            res.json({ ok: true, token: token });
+            // create user
+            ch.publish('event', 'user.create', new Buffer(JSON.stringify({ user: user, data: frnd.data })));
 
+            res.json({ ok: true, token: token });
         });
 
 });

@@ -69,17 +69,10 @@ async.series([
 
     function(done) {
 
-        glob('./src/controllers/*.js', function(err, file) {
+        app.use('/auth', require('./src/controllers/auth'));
 
-            file = file || [];
-
-            file
-                .map(f => path.join(__dirname, f))
-                .forEach(f=> app.use(require(f)))
-
-            console.log('✓ '.bold.green + 'imported controllers');
-            done();
-        });
+        console.log('✓ '.bold.green + 'imported controllers');
+        done();
     },
 
     ///////////////////////////////////////////////////////////////////////////////
